@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Toast Gaming - Community Projects</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        iframe { width: 80%; height: 400px; margin-top: 10px; border: 1px solid #ddd; }
+        .project-card { margin: 10px; padding: 10px; border: 1px solid #ddd; display: inline-block; text-align: center; }
+        img { width: 200px; height: 150px; object-fit: cover; }
+        .error { color: red; }
+    </style>
+</head>
+
+<body>
+    <h1>Toast Gaming - Community Projects (Cloud Powered)</h1>
+
+    <h3>Submit a New Project</h3>
+    <input type="url" id="projectUrl" placeholder="Enter TurboWarp Embed URL" />
+    <button onclick="submitProject()">Submit</button>
+    <p id="errorMessage" class="error"></p>
+
+    <h3>Community Projects</h3>
+    <div id="projectList">Loading projects...</div>
+
+    <h3>Play Project</h3>
+    <div id="playArea"></div>
+
+    <script>
+        const CLOUD_PROJECT_ID = "1134768903"; // YOUR TurboWarp project ID
+        const WEBSOCKET_URL = "wss://clouddata.turbowarp.org";
+        const VARIABLE_NAME = "☁ Projects";
+
+        let cloudSocket;
+        let currentProjects = [];
+
+        function connectToCloud() {
+            cloudSocket = new WebSocket(WEBSOCKET_URL);
+
+            cloudSocket.onopen = () => {
+                cloudSocket.send(JSON.stringify({
+                    m: "handshake",
+                    project_id: CLOUD_PROJECT_ID,
+                    user: "ToastGamingSite"
+                }));
+
+                cloudSocket.send(JSON.stringify({
+                    m: "subscribe",
+                    name: VARIABLE_NAME
+                }));
+            };
+
+            cloudSocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.m === "set" && data.name === VARIABLE_NAME) {
+                    try {
+                        const value = cloudValueToString(data.value);
+                        currentProjects = JSON.parse(value);
+                    } catch (error) {
+                        currentProjects = [];
+                    }
+
+                    displayProjects();
+                }
+            };
+        }
+
+        function cloudValueToString(value) {
+            let str = "";
+            while (value > 0) {
+                const charCode = (value % 256);
+                str = String.fromCharCode(charCode) + str;
+                value = Math.floor(value / 256);
+            }
+            return str;
+        }
+
+        function stringToCloudValue(str) {
+            let value = 0;
+            for (let i = 0; i < str.length; i++) {
+                value = value * 256 + str.charCodeAt(i);
+            }
+            return value;
+        }
+
+        function displayProjects() {
+            const projectList = document.getElementById("projectList");
+            projectList.innerHTML = "";
+
+            if (currentProjects.length === 0) {
+                projectList.innerHTML = "<p>No projects shared yet.</p>";
+                return;
+            }
+
+            currentProjects.forEach((project, index) => {
+                const projectCard = document.createElement("div");
+                projectCard.className = "project-card";
+
+                const thumbnailUrl = `https://cdn2.scratch.mit.edu/get_image/project/${project.id}_480x360.png`;
+
+                projectCard.innerHTML = `
+                    <p>Project ${index + 1}</p>
+                    <img src="${thumbnailUrl}" alt="Project Screenshot">
+                    <p><a href="${project.url}" target="_blank">Open on TurboWarp</a></p>
+                    <button onclick="playProject('${project.url}')">Play</button>
+                `;
+
+                projectList.appendChild(projectCard);
+            });
+        }
+
+        function playProject(url) {
+            const playArea = document.getElementById("playArea");
+            playArea.innerHTML = `<iframe src="${url}" allowfullscreen></iframe>`;
+        }
+
+        function submitProject() {
+            const urlInput = document.getElementById("projectUrl");
+            const errorMessage = document.getElementById("errorMessage");
+
+            const url = urlInput.value.trim();
+
+            // Extract Scratch ID from TurboWarp URL (e.g., https://turbowarp.org/embed/123456789)
+            const match = url.match(/embed\/(\d+)/);
+            if (!url.includes("embed") || !match) {
+                errorMessage.textContent = "Invalid URL. Must be a TurboWarp embed URL.";
+                return;
+            }
+            const scratchId = match[1];
+            errorMessage.textContent = "";
+
+            // Add project to list
+            currentProjects.push({ url, id: scratchId });
+
+            // Convert to JSON and store in cloud
+            const jsonString = JSON.stringify(currentProjects);
+            const cloudValue = stringToCloudValue(jsonString);
+
+            cloudSocket.send(JSON.stringify({
+                m: "set",
+                name: VARIABLE_NAME,
+                value: cloudValue
+            }));
+
+            urlInput.value = "";
+        }
+
+        // Start connection
+        connectToCloud();
+    </script>
+</body>
+
+</html>
